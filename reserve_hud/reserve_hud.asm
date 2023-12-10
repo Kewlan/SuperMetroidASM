@@ -12,6 +12,7 @@ right_tile = $12
 healthCheck_Lower = $14
 healthCheck_Upper = $16
 special_helper = $18
+special_tile_loc = $7EF500 ; 16 bytes of the special tile
 
 org $82AF36
     NOP #4
@@ -94,6 +95,7 @@ SPECIAL_TILE_CHECK_UPPER:
     BMI SET_SPECIAL_TILE
 SET_SPECIAL_TILE:
     ; Return special tile
+    JSR FUNCTION_CREATE_SPECIAL_TILE
     LDA !base_tile : CLC : ADC #$000A
     RTS
 PREPARE_Y:
@@ -124,6 +126,31 @@ APPLY_STUFF:
     ADC tile_data
     RTS
 
+; Creates the sub-tile progress tile in VRAM
+FUNCTION_CREATE_SPECIAL_TILE:
+    ; Step 1: Choose base tile
+    ; Consider left/right and one/two bars
+    ; TEST
+    LDA special_tile_loc
+    CLC : ADC #$0001 : STA special_tile_loc
+RESET_ONE_BAR:
+    ; TODO
+RESET_TWO_BARS:
+    ; TODO
+FILL_BAR:
+    ; TODO
+    JSR FUNCTION_DMA_SPECIAL_TILE
+    RTS
+
+FUNCTION_DMA_SPECIAL_TILE:
+    LDX $7E0330
+    LDA #$0010 : STA $7E00D0,x ; Number of bytes
+    LDA #$0000 : STA $7E00D2,x ;\
+    LDA #$7EF5 : STA $7E00D3,x ;}Source address
+    LDA #$4350 : STA $7E00D5,x ; Destination in Vram
+    TXA : CLC : ADC #$0007 : STA $7E0330 ; Update the stack pointer
+    RTS
+
 
 
 ; NEW TILES
@@ -140,3 +167,4 @@ org $9AB800
     db $FC, $FC, $00, $FC, $00, $FC, $00, $00, $00, $FC, $FC, $00, $FC, $00, $00, $00 ; Two Reserve | Full/Empty | Right
     db $00, $7F, $3F, $40, $3F, $40, $00, $00, $00, $7F, $3F, $40, $3F, $40, $00, $00 ; Two Reserve | Full/Full | Left
     db $00, $FC, $FC, $00, $FC, $00, $00, $00, $00, $FC, $FC, $00, $FC, $00, $00, $00 ; Two Reserve | Full/Full | Right
+    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00 ; Special Tile

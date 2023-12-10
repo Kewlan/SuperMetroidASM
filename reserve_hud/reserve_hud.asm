@@ -72,53 +72,53 @@ FUNCTION_DRAW_TILE:
     ; First check if the max reserves even reach this amount
     LDA !samus_max_reserves
     CMP healthCheck_Lower       ; Example: If (100 - 0 > 0) { DRAW! }
-    BEQ EMPTY_TILE
-    BPL SPECIAL_TILE_CHECK_LOWER
-EMPTY_TILE:
+    BEQ FDT_RETURN_EMPTY_TILE
+    BPL FDT_SPECIAL_TILE_CHECK_LOWER
+FDT_RETURN_EMPTY_TILE:
     LDA #$2C0F
     RTS
-SPECIAL_TILE_CHECK_LOWER:
+FDT_SPECIAL_TILE_CHECK_LOWER:
     LDA healthCheck_Lower : CLC : ADC #$0032 : STA special_helper ; special_helper = Lower+50
     LDA !samus_reserves
     CMP healthCheck_Lower
-    BEQ SPECIAL_TILE_CHECK_UPPER : BMI SPECIAL_TILE_CHECK_UPPER ; if (reserves <= 0) { Continue } else { Check upper limit }
+    BEQ FDT_SPECIAL_TILE_CHECK_UPPER : BMI FDT_SPECIAL_TILE_CHECK_UPPER ; if (reserves <= 0) { Continue } else { Check upper limit }
     CMP special_helper
-    BPL SPECIAL_TILE_CHECK_UPPER ; Continue
-    BMI SET_SPECIAL_TILE
-SPECIAL_TILE_CHECK_UPPER:
+    BPL FDT_SPECIAL_TILE_CHECK_UPPER ; Continue
+    BMI FDT_RETURN_SPECIAL_TILE
+FDT_SPECIAL_TILE_CHECK_UPPER:
     LDA healthCheck_Upper : CLC : ADC #$0032 : STA special_helper
     LDA !samus_reserves
     CMP healthCheck_Upper
-    BEQ PREPARE_Y : BMI PREPARE_Y ; Continue
+    BEQ FDT_PREPARE_Y : BMI FDT_PREPARE_Y ; Continue
     CMP special_helper
-    BPL PREPARE_Y ; Continue
-    BMI SET_SPECIAL_TILE
-SET_SPECIAL_TILE:
+    BPL FDT_PREPARE_Y ; Continue
+    BMI FDT_RETURN_SPECIAL_TILE
+FDT_RETURN_SPECIAL_TILE:
     ; Return special tile
     JSR FUNCTION_CREATE_SPECIAL_TILE
     LDA !base_tile : CLC : ADC #$000A
     RTS
-PREPARE_Y:
+FDT_PREPARE_Y:
     ; Store current tile offset in Y
     LDY #$0000
     LDA right_tile
-    BEQ CALC_START
+    BEQ FDT_CALC_START
     INY
-CALC_START:
+FDT_CALC_START:
     LDA healthCheck_Upper        ;\
     CMP !samus_max_reserves      ;|
-    BPL HAS_HEALTH_FIRST_RESERVE ;|
+    BPL FDT_HAS_HEALTH_FIRST_RESERVE ;|
     INY #4                       ;} If there are at least TWO reserves 
     LDA healthCheck_Upper        ;\
     CMP !samus_reserves          ;|
-    BPL HAS_HEALTH_FIRST_RESERVE ;|
+    BPL FDT_HAS_HEALTH_FIRST_RESERVE ;|
     INY #2                       ;} If the 2nd reserve has ANY health
-HAS_HEALTH_FIRST_RESERVE:
+FDT_HAS_HEALTH_FIRST_RESERVE:
     LDA healthCheck_Lower   ;\
     CMP !samus_reserves     ;|
-    BPL APPLY_STUFF         ;|
-    INY #2                  ;} If the 2nd reserve has ANY health
-APPLY_STUFF:
+    BPL FDT_RETURN_TILE         ;|
+    INY #2                  ;} If the 1st reserve has ANY health
+FDT_RETURN_TILE:
     LDA !base_tile
     STA tile_data
     TYA
@@ -128,21 +128,32 @@ APPLY_STUFF:
 
 ; Creates the sub-tile progress tile in VRAM
 FUNCTION_CREATE_SPECIAL_TILE:
-    ; Step 1: Choose base tile
-    ; Consider left/right and one/two bars
-    ; TEST
-    LDA special_tile_loc
-    CLC : ADC #$0001 : STA special_tile_loc
-RESET_ONE_BAR:
+    ; LDA special_tile_loc : CLC : ADC #$0001 : STA special_tile_loc ; TEST
+    LDA #$B800 : STA special_helper
+FCST_DECIDE_RIGHT_TILE:
+    LDA right_tile
+    BEQ FCST_DECIDE_TWO_BARS
+    LDA special_helper : CLC : ADC #$0010 : STA special_helper
+FCST_DECIDE_TWO_BARS:
+    LDA healthCheck_Upper
+    CMP !samus_max_reserves
+    BPL FCST_MEMCPY
+    LDA special_helper : CLC : ADC #$0040 : STA special_helper
+FCST_DECIDE_FILL_LOWER_BAR:
+    LDA healthCheck_Upper
+    CMP !samus_reserves
+    BPL FCST_MEMCPY
+    LDA special_helper : CLC : ADC #$0020 : STA special_helper
+FCST_MEMCPY:
+    PHB
+    LDA #$000F          ; Copy 16 bytes
+    LDX special_helper  ; Source
+    LDY #$F500          ; Destination
+    MVN $9A7E
+    PLB
+FCST_PARTIAL_FILL_BAR:
     ; TODO
-RESET_TWO_BARS:
-    ; TODO
-FILL_BAR:
-    ; TODO
-    JSR FUNCTION_DMA_SPECIAL_TILE
-    RTS
-
-FUNCTION_DMA_SPECIAL_TILE:
+FCST_FUNCTION_DMA_SPECIAL_TILE:
     LDX $7E0330
     LDA #$0010 : STA $7E00D0,x ; Number of bytes
     LDA #$0000 : STA $7E00D2,x ;\

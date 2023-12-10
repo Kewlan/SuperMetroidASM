@@ -11,6 +11,7 @@ tile_data = $10
 right_tile = $12
 healthCheck_Lower = $14
 healthCheck_Upper = $16
+special_helper = $18
 
 org $82AF36
     NOP #4
@@ -71,9 +72,29 @@ FUNCTION_DRAW_TILE:
     LDA !samus_max_reserves
     CMP healthCheck_Lower       ; Example: If (100 - 0 > 0) { DRAW! }
     BEQ EMPTY_TILE
-    BPL PREPARE_Y
+    BPL SPECIAL_TILE_CHECK_LOWER
 EMPTY_TILE:
     LDA #$2C0F
+    RTS
+SPECIAL_TILE_CHECK_LOWER:
+    LDA healthCheck_Lower : CLC : ADC #$0032 : STA special_helper ; special_helper = Lower+50
+    LDA !samus_reserves
+    CMP healthCheck_Lower
+    BEQ SPECIAL_TILE_CHECK_UPPER : BMI SPECIAL_TILE_CHECK_UPPER ; if (reserves <= 0) { Continue } else { Check upper limit }
+    CMP special_helper
+    BPL SPECIAL_TILE_CHECK_UPPER ; Continue
+    BMI SET_SPECIAL_TILE
+SPECIAL_TILE_CHECK_UPPER:
+    LDA healthCheck_Upper : CLC : ADC #$0032 : STA special_helper
+    LDA !samus_reserves
+    CMP healthCheck_Upper
+    BEQ PREPARE_Y : BMI PREPARE_Y ; Continue
+    CMP special_helper
+    BPL PREPARE_Y ; Continue
+    BMI SET_SPECIAL_TILE
+SET_SPECIAL_TILE:
+    ; Return special tile
+    LDA !base_tile : CLC : ADC #$000A
     RTS
 PREPARE_Y:
     ; Store current tile offset in Y

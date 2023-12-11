@@ -2,17 +2,17 @@
 
 lorom
 
-!samus_max_reserves = $7E09D4
-!samus_reserves = $7E09D6
+!samus_max_reserves = $09D4
+!samus_reserves = $09D6
 !base_tile = #$2060
 
-; Static variables
-tile_data = $10
-right_tile = $12
-healthCheck_Lower = $14
-healthCheck_Upper = $16
-special_helper = $18
-special_tile_loc = $7EF500 ; 16 bytes of the special tile
+; Variables
+tile_data = $10             ; Stores what should be written to the tilemap
+right_tile = $12            ; Effectively a bool: If set, draw the right column of the bars
+healthCheck_Lower = $14     ; Is compared with reserves and max reserves ...
+healthCheck_Upper = $16     ; ... to determine what to draw
+special_helper = $18        ; Used to store info to help draw the special tile correct
+special_tile_loc = $F500    ; 16 bytes of the special tile
 
 org $82AF36
     NOP #4
@@ -128,7 +128,8 @@ FDT_RETURN_TILE:
 
 ; Creates the sub-tile progress tile in VRAM
 FUNCTION_CREATE_SPECIAL_TILE:
-    ; LDA special_tile_loc : CLC : ADC #$0001 : STA special_tile_loc ; TEST
+    ; TEST: LDA special_tile_loc : CLC : ADC #$0001 : STA special_tile_loc
+    ; Step 1: Copy the data of the tile that the special tile should be based on
     LDA #$B800 : STA special_helper
 FCST_DECIDE_RIGHT_TILE:
     LDA right_tile
@@ -151,15 +152,83 @@ FCST_MEMCPY:
     LDY #$F500          ; Destination
     MVN $9A7E
     PLB
-FCST_PARTIAL_FILL_BAR:
-    ; TODO
-FCST_FUNCTION_DMA_SPECIAL_TILE:
-    LDX $7E0330
-    LDA #$0010 : STA $7E00D0,x ; Number of bytes
-    LDA #$0000 : STA $7E00D2,x ;\
-    LDA #$7EF5 : STA $7E00D3,x ;}Source address
-    LDA #$4350 : STA $7E00D5,x ; Destination in Vram
-    TXA : CLC : ADC #$0007 : STA $7E0330 ; Update the stack pointer
+FCST_PAINT_BAR:
+    ; Step 2: Paint over the columns of the bar that should be filled
+    ; First change data bank to 7E
+    PHB : PEA $7E00 : PLB : PLB
+    LDX healthCheck_Upper
+    LDY #special_tile_loc
+FCST_PAINT_BAR_DECIDE_OFFSET:
+    ; When painting top bar, the first 8 bytes are affected
+    ; When painting bottom bar, the last 8 bytes are affected
+    LDA healthCheck_Upper
+    CMP !samus_reserves
+    BMI FCST_PAINT_COLUMNS
+    INY #8 ; If we reach here, we're painting the bottom bar
+    LDX healthCheck_Lower
+FCST_PAINT_COLUMNS:
+    ; X has health test
+    ; Y has address
+    LDA right_tile
+    BNE FCST_PAINT_COLUMN_0
+    ; Draw the unique left side first bar, always
+    ; Health > 0
+FCST_PAINT_COLUMN_LEFT:
+    LDA $0000,y : AND #$BFBF : ORA #$4000 : STA $0000,y
+    LDA $0002,y : AND #$BFBF : ORA #$4000 : STA $0002,y
+    LDA $0004,y : AND #$BFBF : ORA #$4000 : STA $0004,y
+    BRA FCST_PAINT_COLUMN_2
+FCST_PAINT_COLUMN_0:
+    INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_1
+    LDA $0000,y : AND #$7F7F : ORA #$8000 : STA $0000,y
+    LDA $0002,y : AND #$7F7F : ORA #$0080 : STA $0002,y
+    LDA $0004,y : AND #$7F7F : ORA #$0080 : STA $0004,y
+FCST_PAINT_COLUMN_1:
+    INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_2
+    LDA $0000,y : AND #$BFBF : ORA #$4000 : STA $0000,y
+    LDA $0002,y : AND #$BFBF : ORA #$0040 : STA $0002,y
+    LDA $0004,y : AND #$BFBF : ORA #$0040 : STA $0004,y
+FCST_PAINT_COLUMN_2:
+    INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_3
+    LDA $0000,y : AND #$DFDF : ORA #$2000 : STA $0000,y
+    LDA $0002,y : AND #$DFDF : ORA #$0020 : STA $0002,y
+    LDA $0004,y : AND #$DFDF : ORA #$0020 : STA $0004,y
+FCST_PAINT_COLUMN_3:
+    INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_4
+    LDA $0000,y : AND #$EFEF : ORA #$1000 : STA $0000,y
+    LDA $0002,y : AND #$EFEF : ORA #$0010 : STA $0002,y
+    LDA $0004,y : AND #$EFEF : ORA #$0010 : STA $0004,y
+FCST_PAINT_COLUMN_4:
+    INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_5
+    LDA $0000,y : AND #$F7F7 : ORA #$0800 : STA $0000,y
+    LDA $0002,y : AND #$F7F7 : ORA #$0008 : STA $0002,y
+    LDA $0004,y : AND #$F7F7 : ORA #$0008 : STA $0004,y
+    LDA right_tile : BEQ FCST_PAINT_COLUMN_5 ; Right side tiles stop here
+    JMP FCST_DMA_SPECIAL_TILE
+FCST_PAINT_COLUMN_5:
+    INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_6
+    LDA $0000,y : AND #$FBFB : ORA #$0400 : STA $0000,y
+    LDA $0002,y : AND #$FBFB : ORA #$0004 : STA $0002,y
+    LDA $0004,y : AND #$FBFB : ORA #$0004 : STA $0004,y
+FCST_PAINT_COLUMN_6:
+    INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_7
+    LDA $0000,y : AND #$FDFD : ORA #$0200 : STA $0000,y
+    LDA $0002,y : AND #$FDFD : ORA #$0002 : STA $0002,y
+    LDA $0004,y : AND #$FDFD : ORA #$0002 : STA $0004,y
+FCST_PAINT_COLUMN_7:
+    INX #8 : CPX !samus_reserves : BPL FCST_DMA_SPECIAL_TILE
+    LDA $0000,y : AND #$FEFE : ORA #$0100 : STA $0000,y
+    LDA $0002,y : AND #$FEFE : ORA #$0001 : STA $0002,y
+    LDA $0004,y : AND #$FEFE : ORA #$0001 : STA $0004,y
+FCST_DMA_SPECIAL_TILE:
+    ; Step 3: Get the data over to the VRAM
+    LDX $0330
+    LDA #$0010 : STA $00D0,x ; Number of bytes
+    LDA #$0000 : STA $00D2,x ;\
+    LDA #$7EF5 : STA $00D3,x ;}Source address
+    LDA #$4350 : STA $00D5,x ; Destination in Vram
+    TXA : CLC : ADC #$0007 : STA $0330 ; Update the stack pointer
+    PLB ; Restore data bank
     RTS
 
 

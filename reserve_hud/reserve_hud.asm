@@ -4,6 +4,7 @@ lorom
 
 !samus_max_reserves = $09D4
 !samus_reserves = $09D6
+!samus_previous_reserves = $0A1A ; Previously unused
 !base_tile = #$2060
 
 ; Variables
@@ -14,6 +15,11 @@ healthCheck_Upper = $16     ; ... to determine what to draw
 special_helper = $18        ; Used to store info to help draw the special tile correct
 special_tile_loc = $F500    ; 16 bytes of the special tile
 
+; Don't call broken function
+org $82AED9
+    NOP #3
+
+; Don't clear reserve tiles
 org $82AF36
     NOP #4
     NOP #4
@@ -21,14 +27,12 @@ org $82AF36
     NOP #4
 
 org $809B4E
-    JMP $CDA0
+    JMP FUNCTION_DRAW_RESERVE_HUD
 
 org $80CDA0
-    LDA $09C0   ; Load Reserve Mode
-    BNE CONTINUE  ; If Not obtained
-    JMP RETURN
-CONTINUE:
-    CMP #$0001  ; If Auto
+FUNCTION_DRAW_RESERVE_HUD:
+    LDA $09C0
+    CMP #$0001
     BNE DRAW_TILES
 DRAW_AUTO_TEXT:
     LDA #$3C47  ; AU

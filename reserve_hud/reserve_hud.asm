@@ -27,7 +27,8 @@ org $82AF36
     NOP #4
 
 org $809B4E
-    JMP FUNCTION_DRAW_RESERVE_HUD
+    JSR FUNCTION_DRAW_RESERVE_HUD
+    JMP $9B8B
 
 org $80CDA0
 FUNCTION_DRAW_RESERVE_HUD:
@@ -64,9 +65,7 @@ DRAW_TILES:
     LDA #$015E : STA healthCheck_Upper  ; 350
     JSR FUNCTION_DRAW_TILE
     STA $7EC61A
-RETURN:
-    ; Return
-    JMP $9B8B
+    RTS
 
 ; Sets the tile data to the Accumulator
 ; - right_tile
@@ -98,8 +97,12 @@ FDT_SPECIAL_TILE_CHECK_UPPER:
     BPL FDT_PREPARE_Y ; Continue
     BMI FDT_RETURN_SPECIAL_TILE
 FDT_RETURN_SPECIAL_TILE:
-    ; Return special tile
+    LDA !samus_reserves
+    CMP !samus_previous_reserves
+    STA !samus_previous_reserves
+    BEQ FDT_SKIP_SPECIAL_TILE_UPDATE
     JSR FUNCTION_CREATE_SPECIAL_TILE
+FDT_SKIP_SPECIAL_TILE_UPDATE:
     LDA !base_tile : CLC : ADC #$000A
     RTS
 FDT_PREPARE_Y:
@@ -233,6 +236,33 @@ FCST_DMA_SPECIAL_TILE:
     LDA #$4350 : STA $00D5,x ; Destination in Vram
     TXA : CLC : ADC #$0007 : STA $0330 ; Update the stack pointer
     PLB ; Restore data bank
+    RTS
+
+
+
+; REPAINTS
+
+FUNCTION_REPAINT:
+    STZ !samus_previous_reserves
+    JSR FUNCTION_DRAW_RESERVE_HUD
+    RTL
+
+org $828D4B
+    JMP FUNCTION_PAUSE_REPAINT_HELPER
+
+org $82E4A5
+    JMP FUNCTION_DOOR_REPAINT_HELPER
+
+org $82F7A0
+FUNCTION_PAUSE_REPAINT_HELPER:
+    INC $0998
+    JSL FUNCTION_REPAINT
+    PLB
+    PLP
+    RTS
+FUNCTION_DOOR_REPAINT_HELPER:
+    STA $099C
+    JSL FUNCTION_REPAINT
     RTS
 
 

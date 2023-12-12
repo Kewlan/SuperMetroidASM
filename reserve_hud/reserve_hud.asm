@@ -183,17 +183,26 @@ FCST_PAINT_COLUMNS:
     LDA right_tile
     BNE FCST_PAINT_COLUMN_0
     ; Draw the unique left side first bar, always
-    ; Health > 0
 FCST_PAINT_COLUMN_LEFT:
     LDA !samus_reserves
-    CMP #$0009
-    BPL FCST_PAINT_COLUMN_LEFT_B
-FCST_PAINT_COLUMN_LEFT_A: ; If 0 reserves
+    CMP healthCheck_Upper
+    BPL FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_UPPER
+FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_LOWER:
+    LDA healthCheck_Lower ; If we reach here, we're checking the bottom bar
+    BRA FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_CHECK
+FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_UPPER:
+    LDA healthCheck_Upper
+    ; BRA FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_CHECK
+FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_CHECK:
+    CLC : ADC #$0008
+    CMP !samus_reserves
+    BMI FCST_PAINT_COLUMN_LEFT_B
+FCST_PAINT_COLUMN_LEFT_A: ; If current reserve has 0 energy
     LDA $0000,y : AND #$BFBF : ORA #$4000 : STA $0000,y
     LDA $0002,y : AND #$BFBF : ORA #$0040 : STA $0002,y
     LDA $0004,y : AND #$BFBF : ORA #$0040 : STA $0004,y
     JMP FCST_PAINT_COLUMN_2
-FCST_PAINT_COLUMN_LEFT_B: ; If any reserves
+FCST_PAINT_COLUMN_LEFT_B: ; If current reserve has ANY energy
     LDA $0000,y : AND #$BFBF : ORA #$4000 : STA $0000,y
     LDA $0002,y : AND #$BFBF : ORA #$4000 : STA $0002,y
     LDA $0004,y : AND #$BFBF : ORA #$4000 : STA $0004,y

@@ -36,9 +36,13 @@ FUNCTION_DRAW_RESERVE_HUD:
     CMP #$0001
     BNE DRAW_TILES
 DRAW_AUTO_TEXT:
-    LDA #$3C47  ; AU
+    LDY #$998B
+    LDA !samus_reserves
+    BNE $03
+    LDY #$9997
+    LDA $0004,y ; AU
     STA $7EC698 ; Bottom left
-    LDA #$3C48  ; TO
+    LDA $0006,y ; TO
     STA $7EC69A ; Bottom right
 DRAW_TILES:
     ; Bottom left
@@ -181,10 +185,19 @@ FCST_PAINT_COLUMNS:
     ; Draw the unique left side first bar, always
     ; Health > 0
 FCST_PAINT_COLUMN_LEFT:
+    LDA !samus_reserves
+    CMP #$0009
+    BPL FCST_PAINT_COLUMN_LEFT_B
+FCST_PAINT_COLUMN_LEFT_A: ; If 0 reserves
+    LDA $0000,y : AND #$BFBF : ORA #$4000 : STA $0000,y
+    LDA $0002,y : AND #$BFBF : ORA #$0040 : STA $0002,y
+    LDA $0004,y : AND #$BFBF : ORA #$0040 : STA $0004,y
+    JMP FCST_PAINT_COLUMN_2
+FCST_PAINT_COLUMN_LEFT_B: ; If any reserves
     LDA $0000,y : AND #$BFBF : ORA #$4000 : STA $0000,y
     LDA $0002,y : AND #$BFBF : ORA #$4000 : STA $0002,y
     LDA $0004,y : AND #$BFBF : ORA #$4000 : STA $0004,y
-    BRA FCST_PAINT_COLUMN_2
+    JMP FCST_PAINT_COLUMN_2
 FCST_PAINT_COLUMN_0:
     INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_1
     LDA $0000,y : AND #$7F7F : ORA #$8000 : STA $0000,y

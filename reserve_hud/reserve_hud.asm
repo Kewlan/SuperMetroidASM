@@ -2,30 +2,33 @@
 
 lorom
 
+; Definitions
 !samus_max_reserves = $09D4
 !samus_reserves = $09D6
-!samus_previous_reserves = $0A1A ; Previously unused
+!samus_previous_reserves = $0A1A    ; Previously unused
 !base_tile = #$2060
+!special_tile_loc = $F500   ; 16 bytes of the special tile. (Bank 7E)
 
-; Variables
-tile_data = $10             ; Stores what should be written to the tilemap
-right_tile = $12            ; Effectively a bool: If set, draw the right column of the bars
-healthCheck_Lower = $14     ; Is compared with reserves and max reserves ...
-healthCheck_Upper = $16     ; ... to determine what to draw
-special_helper = $18        ; Used to store info to help draw the special tile correct
-special_tile_loc = $F500    ; 16 bytes of the special tile
+; Variables helpers
+tile_data = $C1             ; Stores what should be written to the tilemap
+affect_right_tile = $C3     ; Bool: If set, draw the right column of the bars
+affect_upper_bar = $C5      ; Bool: If set, the top bar of the tile is affected
+healthCheck_Lower = $C7     ; Is compared with reserves and max reserves ...
+healthCheck_Upper = $C9     ; ... to determine what to draw
+special_helper = $CB        ; Used to store info to help draw the special tile correct
 
-; Don't call broken function
+; Don't call broken function that writes garbage to reserve HUD
 org $82AED9
     NOP #3
 
-; Don't clear reserve tiles
+; Don't clear the bar reserve tiles
 org $82AF36
     NOP #4
     NOP #4
     NOP #4
     NOP #4
 
+; Here's where the regular reserve HUD tiles are set; jump to custom draw function instead
 org $809B4E
     JSR FUNCTION_DRAW_RESERVE_HUD
     JMP $9B8B
@@ -46,25 +49,25 @@ DRAW_AUTO_TEXT:
     STA $7EC69A ; Bottom right
 DRAW_TILES:
     ; Bottom left
-    LDA #$0000 : STA right_tile
+    LDA #$0000 : STA affect_right_tile
     LDA #$0000 : STA healthCheck_Lower  ; 0
     LDA #$0064 : STA healthCheck_Upper  ; 100
     JSR FUNCTION_DRAW_TILE
     STA $7EC658
     ; Bottom right
-    LDA #$0001 : STA right_tile
+    LDA #$0001 : STA affect_right_tile
     LDA #$0032 : STA healthCheck_Lower  ; 50
     LDA #$0096 : STA healthCheck_Upper  ; 150
     JSR FUNCTION_DRAW_TILE
     STA $7EC65A
     ; Top left
-    LDA #$0000 : STA right_tile
+    LDA #$0000 : STA affect_right_tile
     LDA #$00C8 : STA healthCheck_Lower  ; 200
     LDA #$012C : STA healthCheck_Upper  ; 300
     JSR FUNCTION_DRAW_TILE
     STA $7EC618
     ; Top right
-    LDA #$0001 : STA right_tile
+    LDA #$0001 : STA affect_right_tile
     LDA #$00FA : STA healthCheck_Lower  ; 250
     LDA #$015E : STA healthCheck_Upper  ; 350
     JSR FUNCTION_DRAW_TILE
@@ -72,7 +75,7 @@ DRAW_TILES:
     RTS
 
 ; Sets the tile data to the Accumulator
-; - right_tile
+; - affect_right_tile
 ; - healthCheck_Lower
 ; - healthCheck_Upper
 FUNCTION_DRAW_TILE:
@@ -112,7 +115,7 @@ FDT_SKIP_SPECIAL_TILE_UPDATE:
 FDT_PREPARE_Y:
     ; Store current tile offset in Y
     LDY #$0000
-    LDA right_tile
+    LDA affect_right_tile
     BEQ FDT_CALC_START
     INY
 FDT_CALC_START:
@@ -139,11 +142,11 @@ FDT_RETURN_TILE:
 
 ; Creates the sub-tile progress tile in VRAM
 FUNCTION_CREATE_SPECIAL_TILE:
-    ; TEST: LDA special_tile_loc : CLC : ADC #$0001 : STA special_tile_loc
+    ; TEST: LDA !special_tile_loc : CLC : ADC #$0001 : STA !special_tile_loc
     ; Step 1: Copy the data of the tile that the special tile should be based on
     LDA #$B800 : STA special_helper
 FCST_DECIDE_RIGHT_TILE:
-    LDA right_tile
+    LDA affect_right_tile
     BEQ FCST_DECIDE_TWO_BARS
     LDA special_helper : CLC : ADC #$0010 : STA special_helper
 FCST_DECIDE_TWO_BARS:
@@ -168,7 +171,7 @@ FCST_PAINT_BAR:
     ; First change data bank to 7E
     PHB : PEA $7E00 : PLB : PLB
     LDX healthCheck_Upper
-    LDY #special_tile_loc
+    LDY #!special_tile_loc
 FCST_PAINT_BAR_DECIDE_OFFSET:
     ; When painting top bar, the first 8 bytes are affected
     ; When painting bottom bar, the last 8 bytes are affected
@@ -180,7 +183,7 @@ FCST_PAINT_BAR_DECIDE_OFFSET:
 FCST_PAINT_COLUMNS:
     ; X has health test
     ; Y has address
-    LDA right_tile
+    LDA affect_right_tile
     BNE FCST_PAINT_COLUMN_0
     ; Draw the unique left side first bar, always
 FCST_PAINT_COLUMN_LEFT:
@@ -232,7 +235,7 @@ FCST_PAINT_COLUMN_4:
     LDA $0000,y : AND #$F7F7 : ORA #$0800 : STA $0000,y
     LDA $0002,y : AND #$F7F7 : ORA #$0008 : STA $0002,y
     LDA $0004,y : AND #$F7F7 : ORA #$0008 : STA $0004,y
-    LDA right_tile : BEQ FCST_PAINT_COLUMN_5 ; Right side tiles stop here
+    LDA affect_right_tile : BEQ FCST_PAINT_COLUMN_5 ; Right side tiles stop here
     JMP FCST_DMA_SPECIAL_TILE
 FCST_PAINT_COLUMN_5:
     INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_6

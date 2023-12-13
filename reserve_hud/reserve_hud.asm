@@ -6,16 +6,31 @@ lorom
 !samus_max_reserves = $09D4
 !samus_reserves = $09D6
 !samus_previous_reserves = $0A1A    ; Previously unused
-!base_tile = #$2060
-!special_tile_loc = $F500   ; 16 bytes of the special tile. (Bank 7E)
+
+; Stores 16 bytes of the special tile while painting. (Bank 7E)
+;The address is also used in DMA, so if changed here, change down too!
+!special_tile_loc = $F500
+
+; Reserve HUD tile info
+!rhud_i_bl = #$2033 ; Previously end of reserve arrow
+!rhud_i_br = #$2046 ; Previously start of reserve arrow
+!rhud_i_tl = #$2058 ; Previously unused
+!rhud_i_tr = #$2059 ; Previously unused
+
+; Reserve HUD tile addresses (VRAM)
+!rhud_v_bl = #$4198 ; Previously end of reserve arrow
+!rhud_v_br = #$4230 ; Previously start of reserve arrow
+!rhud_v_tl = #$42C0 ; Previously unused
+!rhud_v_tr = #$42C8 ; Previously unused
 
 ; Variables helpers
-tile_data = $00C1           ; Stores what should be written to the tilemap
-affect_right_tile = $00C3   ; Bool: If set, draw the right column of the bars
-affect_upper_bar = $00C5    ; Bool: If set, the top bar of the tile is affected
-healthCheck_Lower = $00C7   ; Is compared with reserves and max reserves ...
-healthCheck_Upper = $00C9   ; ... to determine what to draw
-special_helper = $00CB      ; Used to store info to help draw the special tile correct
+tile_info = $C1         ; The tile that should be drawn
+vram_target = $C3       ; The address in VRAM that the tile should be written to
+affect_right_tile = $C5 ; Bool: If set, draw the right column of the bars
+affect_upper_bar = $C7  ; Bool: If set, the top bar of the tile is affected
+healthCheck_Lower = $C9 ; Is compared with reserves and max reserves ...
+healthCheck_Upper = $CB ; ... to determine what to draw
+special_helper = $CD    ; Used to store various info to help draw the special tile correct
 
 ; Don't call broken function that writes garbage to reserve HUD
 org $82AED9
@@ -34,39 +49,67 @@ org $809B4E
     JMP $9B8B
 
 org $80CDA0
+TABLE_NEW_TILES:
+    db $00, $00, $00, $00, $00, $00, $00, $00, $7F, $7F, $40, $7F, $40, $7F, $00, $00 ; One Reserve | Empty | Left
+    db $00, $00, $00, $00, $00, $00, $00, $00, $FC, $FC, $00, $FC, $00, $FC, $00, $00 ; One Reserve | Empty | Right
+    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $7F, $3F, $40, $3F, $40, $00, $00 ; One Reserve | Full | Left
+    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $FC, $FC, $00, $FC, $00, $00, $00 ; One Reserve | Full | Right
+    db $7F, $7F, $40, $7F, $40, $7F, $00, $00, $7F, $7F, $40, $7F, $40, $7F, $00, $00 ; Two Reserve | Empty/Empty | Left
+    db $FC, $FC, $00, $FC, $00, $FC, $00, $00, $FC, $FC, $00, $FC, $00, $FC, $00, $00 ; Two Reserve | Empty/Empty | Right
+    db $7F, $7F, $40, $7F, $40, $7F, $00, $00, $00, $7F, $3F, $40, $3F, $40, $00, $00 ; Two Reserve | Full/Empty | Left
+    db $FC, $FC, $00, $FC, $00, $FC, $00, $00, $00, $FC, $FC, $00, $FC, $00, $00, $00 ; Two Reserve | Full/Empty | Right
+    db $00, $7F, $3F, $40, $3F, $40, $00, $00, $00, $7F, $3F, $40, $3F, $40, $00, $00 ; Two Reserve | Full/Full | Left
+    db $00, $FC, $FC, $00, $FC, $00, $00, $00, $00, $FC, $FC, $00, $FC, $00, $00, $00 ; Two Reserve | Full/Full | Right
 FUNCTION_DRAW_RESERVE_HUD:
     LDA $09C0
     CMP #$0001
-    BNE DRAW_TILES
-DRAW_AUTO_TEXT:
+    BNE FDRH_DRAW_TILES
+FDRH_DRAW_AUTO_TEXT:
     LDY #$998B
     LDA !samus_reserves
     BNE $03
     LDY #$9997
     LDA $0004,y ; AU
-    STA $7EC698 ; Bottom left
+    STA $7EC698 ; Left
     LDA $0006,y ; TO
-    STA $7EC69A ; Bottom right
-DRAW_TILES:
+    STA $7EC69A ; Right
+FDRH_CHECK_PREV:
+    LDA !samus_reserves
+    CMP !samus_previous_reserves
+    STA !samus_previous_reserves
+    BNE FDRH_DRAW_TILES ; Only update if reserve energy is different from last frame
+    ; TODO: CHECK MORE CASES!
+    ; - When loading a file
+    ; - When picking up a new reserve
+    RTS
+FDRH_DRAW_TILES:
     ; Bottom left
+    LDA !rhud_i_bl : STA tile_info
+    LDA !rhud_v_bl : STA vram_target
     LDA #$0000 : STA affect_right_tile
     LDA #$0000 : STA healthCheck_Lower  ; 0
     LDA #$0064 : STA healthCheck_Upper  ; 100
     JSR FUNCTION_DRAW_TILE
     STA $7EC658
     ; Bottom right
+    LDA !rhud_i_br : STA tile_info
+    LDA !rhud_v_br : STA vram_target
     LDA #$0001 : STA affect_right_tile
     LDA #$0032 : STA healthCheck_Lower  ; 50
     LDA #$0096 : STA healthCheck_Upper  ; 150
     JSR FUNCTION_DRAW_TILE
     STA $7EC65A
     ; Top left
+    LDA !rhud_i_tl : STA tile_info
+    LDA !rhud_v_tl : STA vram_target
     LDA #$0000 : STA affect_right_tile
     LDA #$00C8 : STA healthCheck_Lower  ; 200
     LDA #$012C : STA healthCheck_Upper  ; 300
     JSR FUNCTION_DRAW_TILE
     STA $7EC618
     ; Top right
+    LDA !rhud_i_tr : STA tile_info
+    LDA !rhud_v_tr : STA vram_target
     LDA #$0001 : STA affect_right_tile
     LDA #$00FA : STA healthCheck_Lower  ; 250
     LDA #$015E : STA healthCheck_Upper  ; 350
@@ -74,7 +117,9 @@ DRAW_TILES:
     STA $7EC61A
     RTS
 
-; Sets the tile data to the Accumulator
+; Queues the tile to be used to the VRAM write table and returns the tile data. Arguments:
+; - tile_info (Function returns this enough max reserves, otherwise empty tile)
+; - vram_target
 ; - affect_right_tile
 ; - healthCheck_Lower
 ; - healthCheck_Upper
@@ -109,49 +154,44 @@ FDT_SPECIAL_TILE_CHECK_UPPER:
     BEQ FDT_PREPARE_Y : BMI FDT_PREPARE_Y ; Continue
     CMP special_helper
     BPL FDT_PREPARE_Y ; Continue
-    BMI FDT_RETURN_SPECIAL_TILE
+    ;BMI FDT_RETURN_SPECIAL_TILE
 FDT_RETURN_SPECIAL_TILE:
-    LDA !samus_reserves
-    CMP !samus_previous_reserves
-    STA !samus_previous_reserves
-    BEQ FDT_SKIP_SPECIAL_TILE_UPDATE
-    JSR FUNCTION_CREATE_SPECIAL_TILE
-FDT_SKIP_SPECIAL_TILE_UPDATE:
-    LDA !base_tile : CLC : ADC #$000A
-    RTS
+    JMP FUNCTION_CREATE_SPECIAL_TILE ; This ends with RTS, so below is not continued
 FDT_PREPARE_Y:
     ; Store current tile offset in Y
-    LDY #$0000
+    LDY #TABLE_NEW_TILES
     LDA affect_right_tile
     BEQ FDT_CALC_START
-    INY
+    TYA : CLC : ADC #$0010 : TAY ; Right column
 FDT_CALC_START:
-    LDA healthCheck_Upper        ;\
-    CMP !samus_max_reserves      ;|
-    BPL FDT_HAS_HEALTH_FIRST_RESERVE ;|
-    INY #4                       ;} If there are at least TWO reserves 
-    LDA healthCheck_Upper        ;\
-    CMP !samus_reserves          ;|
-    BPL FDT_HAS_HEALTH_FIRST_RESERVE ;|
-    INY #2                       ;} If the 2nd reserve has ANY health
+    LDA healthCheck_Upper
+    CMP !samus_max_reserves
+    BPL FDT_HAS_HEALTH_FIRST_RESERVE
+    TYA : CLC : ADC #$0040 : TAY ; If there are at least TWO reserves
+    LDA healthCheck_Upper
+    CMP !samus_reserves
+    BPL FDT_HAS_HEALTH_FIRST_RESERVE
+    TYA : CLC : ADC #$0020 : TAY ; If the 2nd reserve has ANY health
 FDT_HAS_HEALTH_FIRST_RESERVE:
-    LDA healthCheck_Lower   ;\
-    CMP !samus_reserves     ;|
-    BPL FDT_RETURN_TILE         ;|
-    INY #2                  ;} If the 1st reserve has ANY health
+    LDA healthCheck_Lower
+    CMP !samus_reserves
+    BPL FDT_RETURN_TILE
+    TYA : CLC : ADC #$0020 : TAY ; If the 1st reserve has ANY health
 FDT_RETURN_TILE:
-    LDA !base_tile
-    STA tile_data
-    TYA
-    CLC
-    ADC tile_data
+    LDX $0330
+    LDA #$0010      : STA $00D0,x ; Number of bytes
+    LDA #$8000      : STA $00D3,x ;\ (Write bank first)
+    TYA             : STA $00D2,x ;} Source address
+    LDA vram_target : STA $00D5,x ; Destination in Vram
+    TXA : CLC : ADC #$0007 : STA $0330 ; Update the stack pointer
+    LDA tile_info
     RTS
 
 ; Creates the sub-tile progress tile in VRAM
 FUNCTION_CREATE_SPECIAL_TILE:
     ; TEST: LDA !special_tile_loc : CLC : ADC #$0001 : STA !special_tile_loc
     ; Step 1: Copy the data of the tile that the special tile should be based on
-    LDA #$B800 : STA special_helper
+    LDA #TABLE_NEW_TILES : STA special_helper
 FCST_DECIDE_RIGHT_TILE:
     LDA affect_right_tile
     BEQ FCST_DECIDE_TWO_BARS
@@ -171,7 +211,7 @@ FCST_MEMCPY:
     LDA #$000F          ; Copy 16 bytes
     LDX special_helper  ; Source
     LDY #$F500          ; Destination
-    MVN $9A7E
+    MVN $807E
     PLB
 FCST_PAINT_BAR:
     ; Step 2: Paint over the columns of the bar that should be filled
@@ -260,9 +300,10 @@ FCST_DMA_SPECIAL_TILE:
     LDA #$0010 : STA $00D0,x ; Number of bytes
     LDA #$0000 : STA $00D2,x ;\
     LDA #$7EF5 : STA $00D3,x ;}Source address
-    LDA #$4350 : STA $00D5,x ; Destination in Vram
+    LDA vram_target : STA $00D5,x ; Destination in Vram
     TXA : CLC : ADC #$0007 : STA $0330 ; Update the stack pointer
-    PLB ; Restore data bank
+    PLB ; Restore data bank (Not part of DMA process!)
+    LDA tile_info
     RTS
 
 
@@ -270,7 +311,8 @@ FCST_DMA_SPECIAL_TILE:
 ; REPAINTS
 
 FUNCTION_REPAINT:
-    STZ !samus_previous_reserves
+    LDA #$FFFF
+    STA !samus_previous_reserves
     JSR FUNCTION_DRAW_RESERVE_HUD
     RTL
 
@@ -291,21 +333,3 @@ FUNCTION_DOOR_REPAINT_HELPER:
     STA $099C
     JSL FUNCTION_REPAINT
     RTS
-
-
-
-; NEW TILES
-
-; Row 6, Column 0       
-org $9AB800
-    db $00, $00, $00, $00, $00, $00, $00, $00, $7F, $7F, $40, $7F, $40, $7F, $00, $00 ; One Reserve | Empty | Left
-    db $00, $00, $00, $00, $00, $00, $00, $00, $FC, $FC, $00, $FC, $00, $FC, $00, $00 ; One Reserve | Empty | Right
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $7F, $3F, $40, $3F, $40, $00, $00 ; One Reserve | Full | Left
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $FC, $FC, $00, $FC, $00, $00, $00 ; One Reserve | Full | Right
-    db $7F, $7F, $40, $7F, $40, $7F, $00, $00, $7F, $7F, $40, $7F, $40, $7F, $00, $00 ; Two Reserve | Empty/Empty | Left
-    db $FC, $FC, $00, $FC, $00, $FC, $00, $00, $FC, $FC, $00, $FC, $00, $FC, $00, $00 ; Two Reserve | Empty/Empty | Right
-    db $7F, $7F, $40, $7F, $40, $7F, $00, $00, $00, $7F, $3F, $40, $3F, $40, $00, $00 ; Two Reserve | Full/Empty | Left
-    db $FC, $FC, $00, $FC, $00, $FC, $00, $00, $00, $FC, $FC, $00, $FC, $00, $00, $00 ; Two Reserve | Full/Empty | Right
-    db $00, $7F, $3F, $40, $3F, $40, $00, $00, $00, $7F, $3F, $40, $3F, $40, $00, $00 ; Two Reserve | Full/Full | Left
-    db $00, $FC, $FC, $00, $FC, $00, $00, $00, $00, $FC, $FC, $00, $FC, $00, $00, $00 ; Two Reserve | Full/Full | Right
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00 ; Special Tile

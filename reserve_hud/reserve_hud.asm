@@ -10,12 +10,12 @@ lorom
 !special_tile_loc = $F500   ; 16 bytes of the special tile. (Bank 7E)
 
 ; Variables helpers
-tile_data = $C1             ; Stores what should be written to the tilemap
-affect_right_tile = $C3     ; Bool: If set, draw the right column of the bars
-affect_upper_bar = $C5      ; Bool: If set, the top bar of the tile is affected
-healthCheck_Lower = $C7     ; Is compared with reserves and max reserves ...
-healthCheck_Upper = $C9     ; ... to determine what to draw
-special_helper = $CB        ; Used to store info to help draw the special tile correct
+tile_data = $00C1           ; Stores what should be written to the tilemap
+affect_right_tile = $00C3   ; Bool: If set, draw the right column of the bars
+affect_upper_bar = $00C5    ; Bool: If set, the top bar of the tile is affected
+healthCheck_Lower = $00C7   ; Is compared with reserves and max reserves ...
+healthCheck_Upper = $00C9   ; ... to determine what to draw
+special_helper = $00CB      ; Used to store info to help draw the special tile correct
 
 ; Don't call broken function that writes garbage to reserve HUD
 org $82AED9
@@ -83,11 +83,18 @@ FUNCTION_DRAW_TILE:
     LDA !samus_max_reserves
     CMP healthCheck_Lower       ; Example: If (100 - 0 > 0) { DRAW! }
     BEQ FDT_RETURN_EMPTY_TILE
-    BPL FDT_SPECIAL_TILE_CHECK_LOWER
+    BPL FDT_UPPER_BAR_CHECK
 FDT_RETURN_EMPTY_TILE:
     LDA #$2C0F
     RTS
+FDT_UPPER_BAR_CHECK:
+    STZ affect_upper_bar
+    LDA healthCheck_Upper
+    CMP !samus_reserves
+    BPL FDT_SPECIAL_TILE_CHECK_LOWER
+    LDA #$0001 : STA affect_upper_bar
 FDT_SPECIAL_TILE_CHECK_LOWER:
+    ; if reserves are between (lower and lower + 50) or (upper and upper + 50) { special tile }
     LDA healthCheck_Lower : CLC : ADC #$0032 : STA special_helper ; special_helper = Lower+50
     LDA !samus_reserves
     CMP healthCheck_Lower
@@ -175,10 +182,9 @@ FCST_PAINT_BAR:
 FCST_PAINT_BAR_DECIDE_OFFSET:
     ; When painting top bar, the first 8 bytes are affected
     ; When painting bottom bar, the last 8 bytes are affected
-    LDA healthCheck_Upper
-    CMP !samus_reserves
-    BMI FCST_PAINT_COLUMNS
-    INY #8 ; If we reach here, we're painting the bottom bar
+    LDA affect_upper_bar
+    BNE FCST_PAINT_COLUMNS
+    INY #8
     LDX healthCheck_Lower
 FCST_PAINT_COLUMNS:
     ; X has health test
@@ -187,9 +193,8 @@ FCST_PAINT_COLUMNS:
     BNE FCST_PAINT_COLUMN_0
     ; Draw the unique left side first bar, always
 FCST_PAINT_COLUMN_LEFT:
-    LDA !samus_reserves
-    CMP healthCheck_Upper
-    BPL FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_UPPER
+    LDA affect_upper_bar
+    BNE FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_UPPER
 FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_LOWER:
     LDA healthCheck_Lower ; If we reach here, we're checking the bottom bar
     BRA FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_CHECK
@@ -199,13 +204,9 @@ FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_UPPER:
 FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_CHECK:
     CLC : ADC #$0008
     CMP !samus_reserves
-    BMI FCST_PAINT_COLUMN_LEFT_B
-FCST_PAINT_COLUMN_LEFT_A: ; If current reserve has 0 energy
-    LDA $0000,y : AND #$BFBF : ORA #$4000 : STA $0000,y
-    LDA $0002,y : AND #$BFBF : ORA #$0040 : STA $0002,y
-    LDA $0004,y : AND #$BFBF : ORA #$0040 : STA $0004,y
-    JMP FCST_PAINT_COLUMN_2
-FCST_PAINT_COLUMN_LEFT_B: ; If current reserve has ANY energy
+    BMI FCST_PAINT_COLUMN_LEFT_SPECIAL  ; If current reserve has more than 8 energy
+    JMP FCST_PAINT_COLUMN_1_SKIP_CHECK  ; If current reserve has 1 to 8 energy
+FCST_PAINT_COLUMN_LEFT_SPECIAL:
     LDA $0000,y : AND #$BFBF : ORA #$4000 : STA $0000,y
     LDA $0002,y : AND #$BFBF : ORA #$4000 : STA $0002,y
     LDA $0004,y : AND #$BFBF : ORA #$4000 : STA $0004,y
@@ -217,6 +218,7 @@ FCST_PAINT_COLUMN_0:
     LDA $0004,y : AND #$7F7F : ORA #$0080 : STA $0004,y
 FCST_PAINT_COLUMN_1:
     INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_2
+FCST_PAINT_COLUMN_1_SKIP_CHECK:
     LDA $0000,y : AND #$BFBF : ORA #$4000 : STA $0000,y
     LDA $0002,y : AND #$BFBF : ORA #$0040 : STA $0002,y
     LDA $0004,y : AND #$BFBF : ORA #$0040 : STA $0004,y

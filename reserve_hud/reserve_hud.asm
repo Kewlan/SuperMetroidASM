@@ -1,11 +1,18 @@
 ; New Reserve HUD Style
+; Each reserve is represented with a two tile wide half tile high bar that shows energy progress per pixel
+
+; Info for portability:
+; - This patch uses four tiles to show the reserves. Adjust the "rhud" variables to choose which tiles to use.
+; - There are several hooks in various places to help update the tiles in VRAM at right times.
+; - $0A1A in RAM is used to store the previous reserve health, used to avoid unnecessarily updating reserve HUD.
+; - Direct Page $C1 to $CE is used to store function arguments.
 
 lorom
 
 ; Definitions
 !samus_max_reserves = $09D4
 !samus_reserves = $09D6
-!samus_previous_reserves = $0A1A    ; Previously unused
+!samus_previous_reserves = $0A1A ; Previously unused
 
 ; Stores 16 bytes of the special tile while painting. (Bank 7E)
 ;The address is also used in DMA, so if changed here, change down too!
@@ -32,6 +39,8 @@ healthCheck_Lower = $C9 ; Is compared with reserves and max reserves ...
 healthCheck_Upper = $CB ; ... to determine what to draw
 special_helper = $CD    ; Used to store various info to help draw the special tile correct
 
+
+
 ; Don't call broken function that writes garbage to reserve HUD
 org $82AED9
     NOP #3
@@ -43,13 +52,17 @@ org $82AF36
     NOP #4
     NOP #4
 
+; Hook: At "Samus previous health = 0" in HUD init
+org $809AE4
+    JSR HOOK_HUD_INIT
+
 ; Here's where the regular reserve HUD tiles are set; jump to custom draw function instead
 org $809B4E
     JSR FUNCTION_DRAW_RESERVE_HUD
-    JMP $9B8B
+    JMP $9B8B ; Jump to drawing e-tanks
 
-org $80CDA0
-TABLE_NEW_TILES:
+org $80CDA0 ; Spans to $80D25F for a total of $4BF bytes
+TABLE_NEW_TILES: ; Order matters!
     db $00, $00, $00, $00, $00, $00, $00, $00, $7F, $7F, $40, $7F, $40, $7F, $00, $00 ; One Reserve | Empty | Left
     db $00, $00, $00, $00, $00, $00, $00, $00, $FC, $FC, $00, $FC, $00, $FC, $00, $00 ; One Reserve | Empty | Right
     db $00, $00, $00, $00, $00, $00, $00, $00, $00, $7F, $3F, $40, $3F, $40, $00, $00 ; One Reserve | Full | Left
@@ -63,7 +76,7 @@ TABLE_NEW_TILES:
 FUNCTION_DRAW_RESERVE_HUD:
     LDA $09C0
     CMP #$0001
-    BNE FDRH_DRAW_TILES
+    BNE FDRH_CHECK_PREV
 FDRH_DRAW_AUTO_TEXT:
     LDY #$998B
     LDA !samus_reserves
@@ -78,9 +91,6 @@ FDRH_CHECK_PREV:
     CMP !samus_previous_reserves
     STA !samus_previous_reserves
     BNE FDRH_DRAW_TILES ; Only update if reserve energy is different from last frame
-    ; TODO: CHECK MORE CASES!
-    ; - When loading a file
-    ; - When picking up a new reserve
     RTS
 FDRH_DRAW_TILES:
     ; Bottom left
@@ -117,8 +127,8 @@ FDRH_DRAW_TILES:
     STA $7EC61A
     RTS
 
-; Queues the tile to be used to the VRAM write table and returns the tile data. Arguments:
-; - tile_info (Function returns this enough max reserves, otherwise empty tile)
+; Queues the tile to be used to the VRAM write table and returns the tile info. Arguments:
+; - tile_info (Function returns this if enough max reserves, otherwise empty tile)
 ; - vram_target
 ; - affect_right_tile
 ; - healthCheck_Lower
@@ -156,13 +166,13 @@ FDT_SPECIAL_TILE_CHECK_UPPER:
     BPL FDT_PREPARE_Y ; Continue
     ;BMI FDT_RETURN_SPECIAL_TILE
 FDT_RETURN_SPECIAL_TILE:
-    JMP FUNCTION_CREATE_SPECIAL_TILE ; This ends with RTS, so below is not continued
+    JMP FUNCTION_CREATE_SPECIAL_TILE ; This function ends with RTS, so below is not continued
 FDT_PREPARE_Y:
     ; Store current tile offset in Y
     LDY #TABLE_NEW_TILES
     LDA affect_right_tile
     BEQ FDT_CALC_START
-    TYA : CLC : ADC #$0010 : TAY ; Right column
+    TYA : CLC : ADC #$0010 : TAY ; If right column
 FDT_CALC_START:
     LDA healthCheck_Upper
     CMP !samus_max_reserves
@@ -189,7 +199,6 @@ FDT_RETURN_TILE:
 
 ; Creates the sub-tile progress tile in VRAM
 FUNCTION_CREATE_SPECIAL_TILE:
-    ; TEST: LDA !special_tile_loc : CLC : ADC #$0001 : STA !special_tile_loc
     ; Step 1: Copy the data of the tile that the special tile should be based on
     LDA #TABLE_NEW_TILES : STA special_helper
 FCST_DECIDE_RIGHT_TILE:
@@ -302,17 +311,19 @@ FCST_DMA_SPECIAL_TILE:
     LDA #$7EF5 : STA $00D3,x ;}Source address
     LDA vram_target : STA $00D5,x ; Destination in Vram
     TXA : CLC : ADC #$0007 : STA $0330 ; Update the stack pointer
-    PLB ; Restore data bank (Not part of DMA process!)
+    PLB ; Restore data bank
     LDA tile_info
     RTS
 
+; Hook: HUD init
+HOOK_HUD_INIT:
+    STZ $0A06 ; Original code: Samus previous health = 0
+    LDA #$FFFF : STA !samus_previous_reserves
+    RTS
 
-
-; REPAINTS
-
+; REPAINTS: Rewrite tiles in VRAM immediately after tileset is reloaded
 FUNCTION_REPAINT:
-    LDA #$FFFF
-    STA !samus_previous_reserves
+    LDA #$FFFF : STA !samus_previous_reserves
     JSR FUNCTION_DRAW_RESERVE_HUD
     RTL
 
@@ -332,4 +343,14 @@ FUNCTION_PAUSE_REPAINT_HELPER:
 FUNCTION_DOOR_REPAINT_HELPER:
     STA $099C
     JSL FUNCTION_REPAINT
+    RTS
+
+; Hook: On reserve pickup
+org $848986
+    JSR HOOK_RESERVE_PICKUP
+
+org $84EFD3
+HOOK_RESERVE_PICKUP:
+    LDA #$FFFF : STA !samus_previous_reserves
+    LDA $09D4 ; Original code
     RTS

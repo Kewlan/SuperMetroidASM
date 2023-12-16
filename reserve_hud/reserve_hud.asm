@@ -60,7 +60,7 @@ org $809B4E
     JSR FUNCTION_DRAW_RESERVE_HUD
     JMP $9B8B ; Jump to drawing e-tanks
 
-org $80CDA0 ; Spans to $80D25F for a total of $4BF bytes
+org $80CDA0
 TABLE_NEW_TILES: ; Order matters!
     db $00, $00, $00, $00, $00, $00, $00, $00, $7F, $7F, $40, $7F, $40, $7F, $00, $00 ; One Reserve | Empty | Left
     db $00, $00, $00, $00, $00, $00, $00, $00, $FC, $FC, $00, $FC, $00, $FC, $00, $00 ; One Reserve | Empty | Right
@@ -325,27 +325,31 @@ HOOK_HUD_INIT:
     LDA #$FFFF : STA !samus_previous_reserves
     RTS
 
+; Hook: Door transition
+HOOK_DOOR_TRANSITION:
+    STA $2100 ; Original code
+    REP #$30
+    LDA #$FFFF : STA !samus_previous_reserves
+    JMP FUNCTION_DRAW_RESERVE_HUD
+
 ; REPAINTS: Rewrite tiles in VRAM immediately after tileset is reloaded
 FUNCTION_REPAINT:
     LDA #$FFFF : STA !samus_previous_reserves
     JSR FUNCTION_DRAW_RESERVE_HUD
     RTL
 
-org $828D4B
-    JMP FUNCTION_PAUSE_REPAINT_HELPER
+org $809668
+    JMP HOOK_DOOR_TRANSITION
 
-org $82E4A5
-    JMP FUNCTION_DOOR_REPAINT_HELPER
+org $828D4B ; Pause
+    JSR FUNCTION_PAUSE_REPAINT_HELPER
+
+org $82939C ; Unpause
+    JSR FUNCTION_PAUSE_REPAINT_HELPER
 
 org $82F7A0
 FUNCTION_PAUSE_REPAINT_HELPER:
     INC $0998
-    JSL FUNCTION_REPAINT
-    PLB
-    PLP
-    RTS
-FUNCTION_DOOR_REPAINT_HELPER:
-    STA $099C
     JSL FUNCTION_REPAINT
     RTS
 
